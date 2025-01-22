@@ -1,20 +1,30 @@
+/*** includes ***/
 #include <ctype.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <termios.h>
 #include <unistd.h>
 
+/*** defines ***/
+#define CTRL_KEY(k) ((k) & 0x1f)
+
+/*** data ***/
 struct termios orig_termios;
 
+/*** terminal ***/
 void die(const char *s)
 {
+  write(STDOUT_FILENO, "\x1b[2J", 4);
+  write(STDOUT_FILENO, "\x1b[H", 3);
+
   perror(s);
   exit(1);
 }
 
 void disableRawMode()
 {
-  if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios) == -1
+  if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios) == -1)
   {
     die("tcsetattr");
   }
@@ -42,31 +52,88 @@ void enableRawMode()
   }
 }
 
+char editorReadKey()
+{
+  int nread;
+  char c;
+
+
+  while((nread = read(STDIN_FILENO, &c, 1)) != 1)
+  {
+    if(nread == -1 && errno != EAGAIN)
+    {
+      die("read");
+    }
+  }
+  return c;
+}
+
+/*** output ***/
+void editorDrawRows()
+{
+  int y;
+  for (y= 0; y < 24; y++)
+  {
+    write(STDIN_FILENO, "~\r\n", 3);
+  }
+}
+
+void editorRefreshScreen()
+{
+  write(STDOUT_FILENO, "\x1b[2J", 4);
+  write(STDOUT_FILENO, "\x1b[H", 3);
+
+  editorDrawRows();
+
+  write(STDERR_FILENO, "\x1b[H", 3);
+}
+
+void editorProcessKeyPress()
+{
+  char c = editorReadKey();
+
+  switch (c)
+  {
+    case CTRL_KEY('q'):
+      write(STDOUT_FILENO, "\x1b[2J", 4);
+      write(STDOUT_FILENO, "\x1b[H", 3);
+      exit(0);
+      break;
+  }
+}
+
+/*** init ***/
 int main()
 {
   enableRawMode();
 
-  while(1) //read() and STDIN_FILENO come from <unistd.h
+  while(1)
   {
-    char c = '\0';
-    if(read(STDIN_FILENO, &c, 1) == -1 && errno != EAGIN)
-    {
-      die("read");
-    }
-    if(iscntrl(c)) /*iscntrl tests whether a character is a control character (non printable characters).*/
-    {
-      printf("%d\r\n", c); /*printf prints multiple presentations of a byte, %d tells it to format the byte as a decimal number, %c tells it to write out the byte directly as a character*/
-    }
-    else
-    {
-      printf("%d ('%c')\r\n", c, c);
-    }
-    
-    if(c == 'q')
-    {
-      break;
-    }
+    editorRefreshScreen();
+    editorProcessKeyPress();
   }
+
+  // while(1) //read() and STDIN_FILENO come from <unistd.h
+  // {
+  //   char c = '\0';
+  //   if(read(STDIN_FILENO, &c, 1) == -1 && errno != EAGAIN)
+  //   {
+  //     die("read");
+  //   }
+  //   if(iscntrl(c)) /*iscntrl tests whether a character is a control character (non printable characters).*/
+  //   {
+  //     printf("%d\r\n", c); /*printf prints multiple presentations of a byte, %d tells it to format the byte as a decimal number, %c tells it to write out the byte directly as a character*/
+  //   }
+  //   else
+  //   {
+  //     printf("%d ('%c')\r\n", c, c);
+  //   }
+    
+  //   if(c == CTRL_KEY('q'))
+  //   {
+  //     break;
+  //   }
+  // }
   return 0;
 }
 
